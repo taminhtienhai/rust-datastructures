@@ -1,5 +1,6 @@
 mod linkedlist;
 mod tree;
+mod lru;
 
 use linkedlist::linear::{self, Node, LinkedFunc};
 

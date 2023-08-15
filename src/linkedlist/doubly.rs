@@ -9,6 +9,8 @@ pub struct Node<T> {
     pub prev: Option<NodePtr<T>>,
 }
 
+pub struct NodeIterMut<'a, T>(&'a mut DoublyLinkedList<T>);
+
 pub struct DoublyLinkedList<T> {
     pub head: Option<NodePtr<T>>,
     pub tail: Option<NodePtr<T>>,
@@ -30,6 +32,14 @@ impl <T> Node<T> {
     }
 }
 
+impl <'a, T: Copy> Iterator for NodeIterMut<'a, T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.pop_back()
+    }
+}
+
 impl <T: Copy> DoublyLinkedList<T> {
     fn new() -> Self {
         Self { head: None, tail: None }
@@ -38,7 +48,7 @@ impl <T: Copy> DoublyLinkedList<T> {
     fn push_back(&mut self, item: T) {
         let mut node = Node::new(item);
 
-        match &mut self.tail.take() {
+        match self.tail.take() {
             None => {
                 self.head = Some(node.into());
                 self.tail = self.head.clone();
@@ -50,9 +60,25 @@ impl <T: Copy> DoublyLinkedList<T> {
             },
         }
     }
+
+    fn push_front(&mut self, item: T) {
+        let mut node = Node::new(item);
+
+        match self.head.take() {
+            None => {
+                self.head = Some(node.into());
+                self.tail = self.head.clone();
+            },
+            Some(cur_head) => {
+                node.next = Some(cur_head.clone());
+                cur_head.borrow_mut().prev = Some(node.into());
+                self.head = cur_head.borrow().prev.clone();
+            }
+        }
+    }
     
     fn pop_back(&mut self) -> Option<T> {
-        match &mut self.tail.take() {
+        match self.tail.take() {
             None => None,
             Some(cur_tail) => {
                 let value = cur_tail.borrow().value;
@@ -65,6 +91,25 @@ impl <T: Copy> DoublyLinkedList<T> {
             }
         }
     }
+
+    fn pop_front(&mut self) -> Option<T> {
+        match self.head.take() {
+            None => None,
+            Some(cur_head) => {
+                let value = cur_head.borrow().value;
+                cur_head.borrow_mut().next.as_mut().map(|item| {
+                    item.borrow_mut().prev = None;
+                    self.head = Some(item.clone());
+                });
+                Some(value)
+            }
+        }
+    }
+
+
+    pub fn iter_mut(&mut self) -> NodeIterMut<'_, T> {
+        NodeIterMut(self)
+    }
 }
 
 
@@ -76,18 +121,58 @@ mod tests {
     #[test]
     fn list_push_items() {
         let mut list = DoublyLinkedList::<usize>::new();
-
-
         list.push_back(10);
         list.push_back(11);
         list.push_back(12);
         list.push_back(13);
-
 
         assert_eq!(list.pop_back(), Some(13));
         assert_eq!(list.pop_back(), Some(12));
         assert_eq!(list.pop_back(), Some(11));
         assert_eq!(list.pop_back(), Some(10));
         assert_eq!(list.pop_back(), None);
+    }
+
+    #[test]
+    fn list_pop_front_items() {
+        let mut list = DoublyLinkedList::<usize>::new();
+        list.push_back(10);
+        list.push_back(11);
+        list.push_back(12);
+        list.push_back(13);
+
+        assert_eq!(list.pop_front(), Some(10));
+        assert_eq!(list.pop_front(), Some(11));
+        assert_eq!(list.pop_front(), Some(12));
+        assert_eq!(list.pop_front(), Some(13));
+        assert_eq!(list.pop_front(), None);
+    }
+
+    #[test]
+    fn list_push_front_items() {
+        let mut list = DoublyLinkedList::<usize>::new();
+        list.push_front(10);
+        list.push_front(11);
+        list.push_front(12);
+        list.push_front(13);
+
+        assert_eq!(list.pop_back(), Some(10));
+        assert_eq!(list.pop_back(), Some(11));
+        assert_eq!(list.pop_back(), Some(12));
+        assert_eq!(list.pop_back(), Some(13));
+        assert_eq!(list.pop_back(), None);
+    }
+
+    #[test]
+    fn iterate_list() {
+        let mut list = DoublyLinkedList::<usize>::new();
+        list.push_back(10);
+        list.push_back(11);
+        list.push_back(12);
+        list.push_back(13);
+
+        for item in list.iter_mut() {
+            println!("{item:?}");
+        }
     }
 }

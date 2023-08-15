@@ -1,133 +1,164 @@
-use std::{collections::HashMap, hash::Hash, marker::PhantomData};
+use std::{cmp::Ordering};
 
-#[derive(PartialEq, Eq, Clone)]
-pub struct Node<T: Hash + Eq> {
-    pub value: T,
-    pub childs: HashMap<T, Node<T>>,
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Node {
+    value: char,
+    childs: Vec<Node>,
+    is_end: bool,
 }
 
-pub struct Tries<T: Hash + Eq, Iter> {
-    pub childs: HashMap<T, Node<T>>,
-    _phantom: PhantomData<Iter>,
+pub struct Trie {
+    root: Vec<Node>,
 }
 
-impl<T: Hash + Eq> Hash for Node<T> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.value.hash(state);
+impl Node {
+    fn new(value: char) -> Self {
+        Self { value, childs: Vec::default(), is_end: false }
     }
-}
 
-impl<T: Hash + Eq> Node<T> {
-    fn new(value: T) -> Self {
-        Self {
-            value,
-            childs: HashMap::default(),
+    fn get_value(&self) -> char { self.value }
+
+    fn printf(&self) {
+        println!("Character {:?} -> {:?}", self.value, self.childs.iter().map(Node::get_value).collect::<Vec<_>>());
+        for node in self.childs.iter() {
+            node.printf();
         }
     }
 }
 
-impl<T: Hash + Eq + Clone, V: IntoIterator<Item = T>> Tries<T, V> {
+impl PartialOrd for Node {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Node {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        if self.value > other.value { Ordering::Greater }
+        else if self.value < other.value { Ordering::Less }
+        else { Ordering::Equal }
+    }
+}
+
+impl Trie {
     fn new() -> Self {
-        Self {
-            childs: HashMap::new(),
-            _phantom: PhantomData::default(),
-        }
+        Self { root: Vec::default() }
     }
 
-    fn insert(&mut self, value: V) {
-        let mut cursor: &mut Node<T>;
-        let mut items = value.into_iter();
-        let first_item = items.next();
+    fn insert(&mut self, word: &str) {
+        let mut cursor: &mut Node;
+        let mut items = word.chars();
+        let first_char = items.next();
 
+        self.root.sort();
 
-        match first_item {
-            Some(item) => {
-                // let n = Node::new(item);
-                match self.childs.get_mut(&item) {
-                    Some(node) => {
-                        cursor = node;
-                    }
-                    _ => {
-                        self.childs.insert(item.clone(), Node::new(item.clone()));
-                        cursor = self.childs.get_mut(&item).unwrap();
-                    }
-                }
-            }
-            _ => {
-                panic!("At least one item");
-            }
+        if let Ok(index) = self.root.binary_search(&Node::new(first_char.clone().unwrap())) {
+            cursor = self.root.get_mut(index).unwrap();
+        } else {
+            self.root.push(Node::new(first_char.unwrap()));
+            cursor = self.root.last_mut().unwrap();
         }
+
 
         while let Some(item) = items.next() {
-            if cursor.childs.contains_key(&item) {
-                cursor = cursor.childs.get_mut(&item).unwrap();
+            cursor.childs.sort();
+            if let Ok(next_node) = cursor.childs.binary_search(&Node::new(item.clone())) {
+                cursor = cursor.childs.get_mut(next_node).unwrap();
             } else {
-                cursor.childs.insert(item.clone(), Node::new(item.clone()));
-                cursor = cursor.childs.get_mut(&item).unwrap();
+                cursor.childs.push(Node::new(item));
+                cursor = cursor.childs.last_mut().unwrap();
             }
         }
+
+        cursor.is_end = true;
     }
 
-    fn traverse(&self, node: &Node<T>, collector: &mut Vec<T>) -> Vec<Vec<T>> {
-        let mut rs = Vec::<Vec<T>>::new();
+    fn traverse_tree(&self, node: &Node, collector: &mut Vec<String>) -> Vec<String> {
+        let mut inner_collector = Vec::new();
+        collector.push(node.value.to_string());
 
-        for (key, value) in &node.childs {
-            let mut new_collector = collector.clone();
-            new_collector.push(key.clone());
-            let o_rs = self.traverse(value, &mut new_collector);
-            rs.push(new_collector);
-            rs.extend(o_rs);   
+        if node.childs.len() < 1 {
+            return Vec::from_iter([collector.join("")]);
         }
 
-        rs
-    } 
+        for n in node.childs.iter() {
+            let result = self.traverse_tree(n, &mut Vec::from_iter([collector.join("")]));
+            inner_collector.extend(result);
+        }
 
-    fn auto_complete(&self, word: V) -> Vec<Vec<T>> {
-        let mut words = word.into_iter();
-        let first_word = words.next();
-        let mut cursor: &Node<T>;
+        if node.is_end {
+            inner_collector.push(collector.join(""));
+        }
 
-        match first_word {
-            Some(w) => {
-                if self.childs.contains_key(&w) {
-                    cursor = self.childs.get(&w).unwrap();
-                } else {
-                    return Vec::new();
-                }
-            },
-            _ => {
-                return Vec::new();
+        return inner_collector;
+    }
+
+    fn auto_complete(&self, word: &str) -> Vec<String> {
+        // let mut collector = word.to_string();
+        let mut items = word.chars();
+        let first_char = items.next();
+        let mut cursor: &Node;
+
+        if let Ok(index) = self.root.binary_search(&Node::new(first_char.clone().unwrap())) {
+            cursor = self.root.get(index).unwrap();
+        } else {
+            return Vec::from_iter([word.to_string()]);
+        }
+
+        for item in items {
+            if let Ok(index) = cursor.childs.binary_search(&Node::new(item.clone())) {
+                cursor = cursor.childs.get(index).unwrap();
             }
         }
 
-        while let Some(w) = words.next() {
-            if cursor.childs.contains_key(&w) {
-                cursor = cursor.childs.get(&w).unwrap();
-            } else {
-                return Vec::new();
-            }
+        let mut collector = Vec::<String>::new();
+
+        if cursor.is_end {
+            collector.push(word.to_string());
+        }
+        for item in cursor.childs.iter() {
+            let items = self.traverse_tree(item, &mut Vec::<String>::from_iter([word.to_string()]));
+            collector.extend(items);
         }
 
-        let mut collector = Vec::<T>::new();
-
-        self.traverse(cursor, &mut collector)
+        collector
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Tries;
+    use super::{Trie, Node};
+
+    #[test]
+    fn binary_search() {
+        let node1 = Node::new('h');
+        let node2 = Node::new('c');
+        let node3 = Node::new('a');
+
+        let mut root = Vec::new();
+        root.push(node1);
+        root.push(node2);
+        root.push(node3);
+
+        root.sort();
+
+        println!("{root:?}");
+    }
 
     #[test]
     fn insert_nodes() {
-        let mut tries = Tries::new();
+        let mut trie = Trie::new();
 
-        tries.insert("hello".chars());
-        tries.insert("help".chars());
-        tries.insert("world".chars());
+        trie.insert("hello");
+        trie.insert("help");
+        trie.insert("hell");
+        trie.insert("application");
+        trie.insert("applications");
+        trie.insert("applicationssss");
+        trie.insert("apple");
 
-
-        let words = tries.auto_complete("he".chars());
+        let words = trie.auto_complete("app");
 
         println!("{words:?}");
     }
