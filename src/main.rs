@@ -1,6 +1,6 @@
 mod linkedlist;
 mod tree;
-mod lru;
+mod lru_cache;
 
 use linkedlist::linear::{self, Node, LinkedFunc};
 
